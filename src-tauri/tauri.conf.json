@@ -22,6 +22,10 @@
     }
   },
   "bundle": {
+    "resources": [
+      "resources/calyx-kernel",
+      "resources/android_boot_script.sh"
+    ],
     "active": true,
     "targets": "all",
     "icon": [

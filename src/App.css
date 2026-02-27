@@ -95,6 +95,23 @@ button {
   margin-right: 5px;
 }
 
+.indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 10px;
+}
+.indicator.off { background: #ff4d4d; }
+.indicator.booting { background: #ffcc00; animation: blink 1s infinite; }
+.indicator.running { background: #00e676; box-shadow: 0 0 10px #00e676; }
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
