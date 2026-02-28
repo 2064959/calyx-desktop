@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::os::windows::process::CommandExt;
 use tauri::Manager;
 
@@ -48,12 +48,30 @@ async fn start_silent_engine(app_handle: tauri::AppHandle) -> Result<String, Str
 
 #[tauri::command]
 async fn launch_app_window(package_name: String) -> Result<(), String> {
-    // Lance scrcpy pour afficher l'interface Android
-    Command::new("scrcpy")
-        .args(["--window-title", &package_name, "--always-on-top"])
+    // On définit une liste de chemins probables pour scrcpy sur Windows
+    println!("📱 Lancement de l'application {} dans une fenêtre dédiée...", package_name);
+    let scrcpy_cmd = if cfg!(target_os = "windows") {
+        "scrcpy" // On tente le PATH en premier
+    } else {
+        "scrcpy"
+    };
+
+    // 1. Connexion ADB (Indispensable pour scrcpy)
+    let _abd = Command::new("adb")
+        .args(["connect", "localhost:5555"])
+        .creation_flags(0x08000000)
+        .status()
+        .map_err(|e| format!("Impossible de connecter ADB à l'instance Android. Erreur : {}. Assurez-vous qu'ADB est installé et dans votre PATH.", e))?;
+
+    // 2. Lancement
+    let _child = Command::new("scrcpy")
+        .args(["--serial", "localhost:5555", "--window-title", &package_name, "--no-audio"])
         .creation_flags(0x08000000)
         .spawn()
-        .map_err(|e| format!("Erreur scrcpy : {}", e))?;
+        .map_err(|e| format!("Impossible de lancer scrcpy. Erreur : {}. Assurez-vous qu'il est installé via winget.", e))?;
+
+    
+
     Ok(())
 }
 
