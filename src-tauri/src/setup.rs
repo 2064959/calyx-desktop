@@ -98,6 +98,14 @@ pub async fn full_setup_check(app_handle: tauri::AppHandle) -> Result<(), String
             .status()
             .ok(); // On ignore si certains modules sont déjà intégrés ("built-in")
     }
+    // ... fin de la boucle modprobe ...
+    
+    app_handle.emit("setup-progress", "🔄 Redémarrage de Docker avec les nouveaux modules...").unwrap();
+    Command::new("wsl")
+        .args(["-d", "Ubuntu-22.04", "-u", "root", "systemctl", "restart", "docker"])
+        .creation_flags(NO_WINDOW)
+        .status()
+        .ok();
 
     // --- ÉTAPE 6 : Injection du Script de Boot ---
     app_handle.emit("setup-progress", "📜 Déploiement du script de boot...").unwrap();
