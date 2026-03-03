@@ -10,7 +10,7 @@ mod setup;
 
 // Commande pour démarrer l'instance Android en mode caché
 #[tauri::command]
-async fn start_silent_engine(app_handle: tauri::AppHandle) -> Result<String, String> {
+async fn start_silent_engine(app_handle: tauri::AppHandle, package_name: String) -> Result<String, String> {
     // 1. Résoudre le chemin du script dans les ressources Windows
     let script_path = app_handle.path().resolve("resources/android_boot_script.sh", tauri::path::BaseDirectory::Resource)
         .map_err(|_| "Script de boot introuvable dans les ressources")?;
@@ -41,36 +41,65 @@ async fn start_silent_engine(app_handle: tauri::AppHandle) -> Result<String, Str
     let _child = Command::new("wsl")
         .args(["-d", "Ubuntu-22.04", "bash", "-c", "~/android_boot_script.sh"])
         .creation_flags(0x08000000)
-        .spawn();
+        .spawn()
+        .map_err(|e| format!("Erreur script : {}", e))?;
 
     Ok("Docker est prêt et l'instance Android démarre.".into())
 }
 
 #[tauri::command]
 async fn launch_app_window(package_name: String) -> Result<(), String> {
-    // On définit une liste de chemins probables pour scrcpy sur Windows
-    println!("📱 Lancement de l'application {} dans une fenêtre dédiée...", package_name);
-    let scrcpy_cmd = if cfg!(target_os = "windows") {
-        "scrcpy" // On tente le PATH en premier
-    } else {
-        "scrcpy"
-    };
+    println!("📱 Tentative de connexion à l'instance...");
 
-    // 1. Connexion ADB (Indispensable pour scrcpy)
-    let _abd = Command::new("adb")
-        .args(["connect", "localhost:5555"])
+    // 1. Forcer la connexion ADB (Utilise 127.0.0.1 plutôt que localhost pour plus de stabilité)
+    let _ = Command::new("adb")
+        .args(["connect", "127.0.0.1:5555"])
         .creation_flags(0x08000000)
-        .status()
-        .map_err(|e| format!("Impossible de connecter ADB à l'instance Android. Erreur : {}. Assurez-vous qu'ADB est installé et dans votre PATH.", e))?;
+        .status();
 
-    // 2. Lancement
-    let _child = Command::new("scrcpy")
-        .args(["--serial", "localhost:5555", "--window-title", &package_name, "--no-audio"])
+    // 2. Attendre que l'appareil soit prêt (Loop de 5 secondes max)
+    let mut ready = false;
+    for _ in 0..10 {
+        let output = Command::new("adb")
+            .args(["-s", "127.0.0.1:5555", "get-state"])
+            .creation_flags(0x08000000)
+            .output();
+
+        if let Ok(out) = output {
+            let state = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if state == "device" {
+                ready = true;
+                break;
+            }
+        }
+        println!("⏳ Instance en cours de boot, attente...");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+
+    if !ready {
+        return Err("L'instance Android ne répond pas après 10 secondes.".into());
+    }
+
+    // 3. Lancer scrcpy
+    println!("✅ Appareil prêt. Lancement de la fenêtre...");
+    Command::new("scrcpy")
+        .args([
+            "--serial", "127.0.0.1:5555",
+            "--window-title", &package_name,
+            "--no-audio",
+            "--always-on-top",
+            
+        ])
         .creation_flags(0x08000000)
         .spawn()
-        .map_err(|e| format!("Impossible de lancer scrcpy. Erreur : {}. Assurez-vous qu'il est installé via winget.", e))?;
+        .map_err(|e| format!("Erreur scrcpy : {}", e))?;
 
-    
+    Command::new("wsl")
+        .args(["-d", "Ubuntu-22.04", "-u", "root", "service", "docker", "logs", "calyx-engine", "--tail", "50"])
+        .creation_flags(0x00000000) // Ne Cache pas la fenêtre console
+        .output()
+        .map_err(|e| format!("Erreur logs Docker : {}", e))?;
+        
 
     Ok(())
 }
@@ -106,7 +135,7 @@ fn main() {
                     Ok(_) => {
                         println!("✅ Environnement prêt !");
                         // Optionnel : On peut lancer le moteur automatiquement ici
-                        let _ = start_silent_engine(handle).await;
+                        let _ = start_silent_engine(handle, "Calyx UI".to_string()).await;
                     },
                     Err(e) => {
                         eprintln!("❌ Échec du setup critique : {}", e);
