@@ -94,11 +94,12 @@ async fn launch_app_window(package_name: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Erreur scrcpy : {}", e))?;
 
+    // CORRECT : On appelle docker directement, pas le service
     Command::new("wsl")
-        .args(["-d", "Ubuntu-22.04", "-u", "root", "service", "docker", "logs", "calyx-engine", "--tail", "50"])
-        .creation_flags(0x00000000) // Ne Cache pas la fenêtre console
-        .output()
-        .map_err(|e| format!("Erreur logs Docker : {}", e))?;
+        .args(["-d", "Ubuntu-22.04", "docker", "logs", "calyx-engine", "--tail", "50"])
+        .creation_flags(0x08000000)
+        .spawn() // Utilise spawn pour ne pas bloquer ton interface Tauri
+        .ok();
         
 
     Ok(())
